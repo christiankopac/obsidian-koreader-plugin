@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-koreader-sync",
 	"version": "1.0.0",
-	"description": "Sync highlights and bookmarks from KOReader to Obsidian",
+	"description": "Sync highlights and bookmarks from KOReader with improved handling and organization.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
