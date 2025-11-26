@@ -1,9 +1,9 @@
 {
-	"id": "obsidian-koreader-sync",
+	"id": "koreader-sync",
 	"name": "KOReader Sync",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Sync highlights and bookmarks from KOReader to Obsidian with improved handling and organization.",
+	"description": "Sync highlights and bookmarks from KOReader with improved handling and organization.",
 	"author": "Christian Kopac",
 	"authorUrl": "https://christiankopac.com",
 	"fundingUrl": "",
