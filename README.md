@@ -4,7 +4,7 @@ A plugin for Obsidian that syncs highlights and bookmarks from KOReader to your 
 
 ## Quick Start
 
-1. **Install**: Download and extract to `.obsidian/plugins/obsidian-koreader-sync/`
+1. **Install**: Download and extract to `.obsidian/plugins/koreader-sync/`
 2. **Configure**: Set your KOReader path in plugin settings
 3. **Sync**: Click the documents icon or use the command palette
 

@@ -5,7 +5,7 @@ This document provides an overview of the organized folder structure for the KOR
 ## Root Directory
 
 ```
-obsidian-koreader-sync/
+koreader-sync/
 ├── README.md                 # Quick start guide and overview
 ├── package.json             # Project dependencies and scripts
 ├── manifest.json            # Obsidian plugin manifest
