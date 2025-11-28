@@ -9,7 +9,7 @@
 		"copy-files": "mkdir -p dist && cp manifest.json dist/ && cp styles.css dist/",
 		"clean": "rm -rf dist",
 		"version": "node version-bump.mjs && pnpm run build && git add manifest.json versions.json dist/",
-		"release": "pnpm run build && cd dist && tar -czf ../koreader-sync-plugin.tar.gz ."
+		"release": "pnpm run build && python3 -c \"import shutil; shutil.make_archive('koreader-sync-plugin-1.0.1', 'zip', 'dist')\""
 	},
 	"keywords": [
 		"obsidian",
