@@ -1,5 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, normalizePath } from 'obsidian';
-import * as crypto from 'crypto';
+import { App, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath } from 'obsidian';
 import * as matter from 'gray-matter';
 import { KOReaderMetadata } from './core/koreader-metadata';
 import { 
@@ -77,7 +76,7 @@ export default class KOReaderSyncPlugin extends Plugin {
     await this.loadSettings();
 
     // Add ribbon icon
-    const ribbonIconEl = this.addRibbonIcon(
+    this.addRibbonIcon(
       'documents',
       'Sync KOReader highlights',
       this.syncHighlights.bind(this)
@@ -85,16 +84,16 @@ export default class KOReaderSyncPlugin extends Plugin {
 
     // Add commands
     this.addCommand({
-      id: 'koreader-sync-highlights',
-      name: 'Sync KOReader Highlights',
+      id: 'sync-highlights',
+      name: 'Sync KOReader highlights',
       callback: () => {
-        this.syncHighlights();
+        void this.syncHighlights();
       },
     });
 
     this.addCommand({
-      id: 'koreader-reset-imported',
-      name: 'Reset Imported Notes List',
+      id: 'reset-imported',
+      name: 'Reset imported notes list',
       checkCallback: (checking: boolean) => {
         if (this.settings.enableResetImportedNotes) {
           if (!checking) {
@@ -128,7 +127,7 @@ export default class KOReaderSyncPlugin extends Plugin {
   private manageTitle(title: string, options: TitleOptions = {}): string {
     // Clean the title
     title = title
-      .replace(/[\\\/:]/g, '_') // Replace invalid characters
+      .replace(/[\\/:]/g, '_') // Replace invalid characters
       .replace(/_+/g, '_') // Replace multiple underscores with single
       .trim()
       .replace(/^_+|_+$/g, '') // Remove leading/trailing underscores
@@ -146,9 +145,13 @@ export default class KOReaderSyncPlugin extends Plugin {
     return `${options.prefix || ''}${title}${options.suffix || ''}`;
   }
 
-  private generateUniqueId(book: KOReaderBook, highlight: KOReaderHighlight | KOReaderBookmark, isBookmark: boolean): string {
+  private async generateUniqueId(book: KOReaderBook, highlight: KOReaderHighlight | KOReaderBookmark, isBookmark: boolean): Promise<string> {
     const base = `${book.title} - ${book.authors} - ${highlight.pos0} - ${highlight.pos1}`;
-    return crypto.createHash('md5').update(base).digest('hex');
+    const encoder = new TextEncoder();
+    const data = encoder.encode(base);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
   }
 
   private extractPageNumber(pageString: string): number {
@@ -156,17 +159,17 @@ export default class KOReaderSyncPlugin extends Plugin {
     return match ? parseInt(match[0]) : 0;
   }
 
-  private renderTemplate(template: string, data: any): string {
+  private renderTemplate(template: string, data: Record<string, unknown>): string {
     return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
       const value = this.getNestedValue(data, key.trim());
       return value !== undefined ? String(value) : '';
     });
   }
 
-  private getNestedValue(obj: any, path: string): any {
+  private getNestedValue(obj: Record<string, unknown>, path: string): unknown {
     return path.split('.').reduce((current, key) => {
-      return current && current[key] !== undefined ? current[key] : undefined;
-    }, obj);
+      return current && typeof current === 'object' && current !== null && key in current ? (current as Record<string, unknown>)[key] : undefined;
+    }, obj as unknown);
   }
 
   private async createNoteContent(highlightData: HighlightData): Promise<string> {
@@ -196,13 +199,19 @@ export default class KOReaderSyncPlugin extends Plugin {
       if (templateFile && templateFile instanceof TFile) {
         return await this.app.vault.read(templateFile);
       }
-    } catch (error) {
+    } catch {
       console.warn('Failed to load custom template, using default');
     }
     return this.settings.defaultTemplate;
   }
 
-  private createFrontMatter(highlightData: HighlightData, uniqueId: string, managedBookTitle: string): FrontMatter {
+  private async createFrontMatter(highlightData: HighlightData, uniqueId: string, managedBookTitle: string): Promise<FrontMatter> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(highlightData.highlight);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const bodyHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+    
     return {
       type: NOTE_TYPE,
       uniqueId,
@@ -220,7 +229,7 @@ export default class KOReaderSyncPlugin extends Plugin {
         isBookmark: highlightData.isBookmark
       },
       metadata: {
-        body_hash: crypto.createHash('md5').update(highlightData.highlight).digest('hex'),
+        body_hash: bodyHash,
         keep_in_sync: this.settings.keepInSync,
         yet_to_be_edited: true,
         managed_book_title: managedBookTitle,
@@ -314,7 +323,7 @@ export default class KOReaderSyncPlugin extends Plugin {
       let importedCount = 0;
       let updatedCount = 0;
 
-      for (const [fullTitle, book] of Object.entries(books)) {
+      for (const [, book] of Object.entries(books)) {
         const managedBookTitle = this.manageTitle(book.title, this.settings.bookTitleOptions);
         const path = this.settings.aFolderForEachBook
           ? normalizePath(`${this.settings.obsidianNoteFolder}/${managedBookTitle}`)
@@ -330,8 +339,7 @@ export default class KOReaderSyncPlugin extends Plugin {
 
         // Process highlights
         if (this.settings.syncHighlights) {
-          for (const [pageKey, highlights] of Object.entries(book.highlight)) {
-            const page = parseInt(pageKey);
+          for (const [, highlights] of Object.entries(book.highlight)) {
             for (const highlight of highlights) {
               const result = await this.processHighlight(book, highlight, false, path, managedBookTitle, existingNotes);
               if (result === 'imported') importedCount++;
@@ -364,9 +372,9 @@ export default class KOReaderSyncPlugin extends Plugin {
     isBookmark: boolean,
     path: string,
     managedBookTitle: string,
-    existingNotes: Map<string, any>
+    existingNotes: Map<string, { file: TFile; keep_in_sync: boolean; yet_to_be_edited: boolean }>
   ): Promise<'imported' | 'updated' | 'skipped'> {
-    const uniqueId = this.generateUniqueId(book, highlight, isBookmark);
+    const uniqueId = await this.generateUniqueId(book, highlight, isBookmark);
     
     // Skip if already imported and not keeping in sync
     if (this.settings.importedNotes[uniqueId] && !this.settings.keepInSync) {
@@ -388,7 +396,7 @@ export default class KOReaderSyncPlugin extends Plugin {
     };
 
     const content = await this.createNoteContent(highlightData);
-    const frontMatter = this.createFrontMatter(highlightData, uniqueId, managedBookTitle);
+    const frontMatter = await this.createFrontMatter(highlightData, uniqueId, managedBookTitle);
     const noteTitle = this.manageTitle(highlightData.highlight, this.settings.noteTitleOptions);
     const notePath = normalizePath(`${path}/${noteTitle}.md`);
 
@@ -398,8 +406,8 @@ export default class KOReaderSyncPlugin extends Plugin {
       try {
         await this.app.vault.modify(existingNote.file, matter.stringify(content, { [KOREADER_KEY]: frontMatter }));
         return 'updated';
-      } catch (error) {
-        console.warn(`Failed to update note: ${notePath}`, error);
+      } catch {
+        console.warn(`Failed to update note: ${notePath}`);
         return 'skipped';
       }
     }
@@ -410,8 +418,8 @@ export default class KOReaderSyncPlugin extends Plugin {
         await this.app.vault.create(notePath, matter.stringify(content, { [KOREADER_KEY]: frontMatter }));
         this.settings.importedNotes[uniqueId] = true;
         return 'imported';
-      } catch (error) {
-        console.warn(`Failed to create note: ${notePath}`, error);
+      } catch {
+        console.warn(`Failed to create note: ${notePath}`);
         return 'skipped';
       }
     }
@@ -419,18 +427,22 @@ export default class KOReaderSyncPlugin extends Plugin {
     return 'skipped';
   }
 
-  private getExistingNotes(): Map<string, any> {
-    const existingNotes = new Map();
+  private getExistingNotes(): Map<string, { file: TFile; keep_in_sync: boolean; yet_to_be_edited: boolean }> {
+    const existingNotes = new Map<string, { file: TFile; keep_in_sync: boolean; yet_to_be_edited: boolean }>();
     
     this.app.vault.getMarkdownFiles().forEach((file) => {
+      if (!(file instanceof TFile)) {
+        return;
+      }
       const cache = this.app.metadataCache.getFileCache(file);
       const frontMatter = cache?.frontmatter;
       
       if (frontMatter?.[KOREADER_KEY]?.uniqueId) {
-        existingNotes.set(frontMatter[KOREADER_KEY].uniqueId, {
-          file: file as TFile,
-          keep_in_sync: frontMatter[KOREADER_KEY].metadata.keep_in_sync,
-          yet_to_be_edited: frontMatter[KOREADER_KEY].metadata.yet_to_be_edited
+        const koreaderData = frontMatter[KOREADER_KEY] as { uniqueId: string; metadata: { keep_in_sync: boolean; yet_to_be_edited: boolean } };
+        existingNotes.set(koreaderData.uniqueId, {
+          file: file,
+          keep_in_sync: koreaderData.metadata.keep_in_sync,
+          yet_to_be_edited: koreaderData.metadata.yet_to_be_edited
         });
       }
     });
@@ -462,11 +474,13 @@ class KOReaderSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'KOReader Sync Settings' });
+    new Setting(containerEl)
+      .setName('KOReader sync settings')
+      .setHeading();
 
     // KOReader Path
     new Setting(containerEl)
-      .setName('KOReader Base Path')
+      .setName('KOReader base path')
       .setDesc('Path where KOReader is mounted (e.g., /media/user/KOBOeReader)')
       .addText(text => text
         .setPlaceholder('Enter KOReader path')
@@ -478,7 +492,7 @@ class KOReaderSettingTab extends PluginSettingTab {
 
     // Obsidian Folder
     new Setting(containerEl)
-      .setName('Highlights Folder')
+      .setName('Highlights folder')
       .setDesc('Folder in your vault where highlights will be saved')
       .addDropdown(dropdown => {
         const folders = this.getFolders();
@@ -494,10 +508,12 @@ class KOReaderSettingTab extends PluginSettingTab {
       });
 
     // Sync Options
-    containerEl.createEl('h3', { text: 'Sync Options' });
+    new Setting(containerEl)
+      .setName('Sync options')
+      .setHeading();
 
     new Setting(containerEl)
-      .setName('Sync Highlights')
+      .setName('Sync highlights')
       .setDesc('Import highlights from KOReader')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.syncHighlights)
@@ -507,7 +523,7 @@ class KOReaderSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Sync Bookmarks')
+      .setName('Sync bookmarks')
       .setDesc('Import bookmarks from KOReader')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.syncBookmarks)
@@ -517,7 +533,7 @@ class KOReaderSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Keep in Sync')
+      .setName('Keep in sync')
       .setDesc('Automatically update notes when highlights change in KOReader')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.keepInSync)
@@ -527,7 +543,7 @@ class KOReaderSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Create Folder per Book')
+      .setName('Create folder per book')
       .setDesc('Create a separate folder for each book')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.aFolderForEachBook)
@@ -537,7 +553,7 @@ class KOReaderSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Create Book Index')
+      .setName('Create book index')
       .setDesc('Create an index note for each book with all highlights')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.createBookIndex)
@@ -547,10 +563,12 @@ class KOReaderSettingTab extends PluginSettingTab {
         }));
 
     // Template Settings
-    containerEl.createEl('h3', { text: 'Template Settings' });
+    new Setting(containerEl)
+      .setName('Template settings')
+      .setHeading();
 
     new Setting(containerEl)
-      .setName('Custom Template')
+      .setName('Custom template')
       .setDesc('Use a custom template for highlight notes')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.customTemplate)
@@ -561,7 +579,7 @@ class KOReaderSettingTab extends PluginSettingTab {
 
     if (this.plugin.settings.customTemplate) {
       new Setting(containerEl)
-        .setName('Template File')
+        .setName('Template file')
         .setDesc('Path to your custom template file')
         .addText(text => text
           .setPlaceholder('templates/highlight.md')
@@ -573,16 +591,20 @@ class KOReaderSettingTab extends PluginSettingTab {
     }
 
     // Title Settings
-    containerEl.createEl('h3', { text: 'Title Settings' });
+    new Setting(containerEl)
+      .setName('Title settings')
+      .setHeading();
 
-    this.addTitleSettings(containerEl, 'Note Titles', this.plugin.settings.noteTitleOptions, 'noteTitleOptions');
-    this.addTitleSettings(containerEl, 'Book Titles', this.plugin.settings.bookTitleOptions, 'bookTitleOptions');
+    this.addTitleSettings(containerEl, 'Note titles', this.plugin.settings.noteTitleOptions, 'noteTitleOptions');
+    this.addTitleSettings(containerEl, 'Book titles', this.plugin.settings.bookTitleOptions, 'bookTitleOptions');
 
     // Danger Zone
-    containerEl.createEl('h3', { text: 'Danger Zone' });
+    new Setting(containerEl)
+      .setName('Danger zone')
+      .setHeading();
 
     new Setting(containerEl)
-      .setName('Enable Reset Imported Notes')
+      .setName('Enable reset imported notes')
       .setDesc('Enable the command to reset the list of imported notes')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.enableResetImportedNotes)
@@ -593,10 +615,13 @@ class KOReaderSettingTab extends PluginSettingTab {
   }
 
   private addTitleSettings(containerEl: HTMLElement, title: string, options: TitleOptions, settingKey: string) {
-    containerEl.createEl('h4', { text: title });
+    new Setting(containerEl)
+      .setName(title)
+      .setHeading();
 
     new Setting(containerEl)
       .setName('Prefix')
+      .setDesc('Prefix to add to titles')
       .addText(text => text
         .setPlaceholder('Enter prefix')
         .setValue(options.prefix || '')
@@ -607,6 +632,7 @@ class KOReaderSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Suffix')
+      .setDesc('Suffix to add to titles')
       .addText(text => text
         .setPlaceholder('Enter suffix')
         .setValue(options.suffix || '')
@@ -616,7 +642,7 @@ class KOReaderSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Max Words')
+      .setName('Max words')
       .setDesc('Maximum number of words in title')
       .addSlider(slider => slider
         .setLimits(1, 20, 1)
@@ -628,7 +654,7 @@ class KOReaderSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Max Length')
+      .setName('Max length')
       .setDesc('Maximum number of characters in title')
       .addSlider(slider => slider
         .setLimits(10, 100, 5)
@@ -641,12 +667,12 @@ class KOReaderSettingTab extends PluginSettingTab {
   }
 
   private getFolders(): string[] {
-    const folders: string[] = [];
-    const files = (this.app.vault.adapter as any).files;
+    const folders: string[] = ['/'];
+    const allFiles = this.app.vault.getAllLoadedFiles();
     
-    for (const [path, file] of Object.entries(files)) {
-      if ((file as any).type === 'folder') {
-        folders.push(path);
+    for (const file of allFiles) {
+      if (file.path !== '/' && !file.path.includes('.')) {
+        folders.push(file.path);
       }
     }
     
