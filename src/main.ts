@@ -79,7 +79,9 @@ export default class KOReaderSyncPlugin extends Plugin {
     this.addRibbonIcon(
       'documents',
       'Sync KOReader highlights',
-      this.syncHighlights.bind(this)
+      () => {
+        void this.syncHighlights();
+      }
     );
 
     // Add commands
@@ -162,7 +164,17 @@ export default class KOReaderSyncPlugin extends Plugin {
   private renderTemplate(template: string, data: Record<string, unknown>): string {
     return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
       const value = this.getNestedValue(data, key.trim());
-      return value !== undefined ? String(value) : '';
+      if (value === undefined) {
+        return '';
+      }
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+      }
+      if (value === null) {
+        return '';
+      }
+      // For objects and arrays, use JSON.stringify to avoid [object Object]
+      return JSON.stringify(value);
     });
   }
 
@@ -246,8 +258,7 @@ export default class KOReaderSyncPlugin extends Plugin {
 
     // Collect all highlights
     if (this.settings.syncHighlights) {
-      for (const [pageKey, highlights] of Object.entries(book.highlight)) {
-        const page = parseInt(pageKey);
+      for (const [, highlights] of Object.entries(book.highlight)) {
         for (const highlight of highlights) {
           allHighlights.push({
             title: book.title,
@@ -475,7 +486,7 @@ class KOReaderSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName('KOReader sync settings')
+      .setName('Sync configuration')
       .setHeading();
 
     // KOReader Path
@@ -564,7 +575,7 @@ class KOReaderSettingTab extends PluginSettingTab {
 
     // Template Settings
     new Setting(containerEl)
-      .setName('Template settings')
+      .setName('Templates')
       .setHeading();
 
     new Setting(containerEl)
@@ -592,7 +603,7 @@ class KOReaderSettingTab extends PluginSettingTab {
 
     // Title Settings
     new Setting(containerEl)
-      .setName('Title settings')
+      .setName('Titles')
       .setHeading();
 
     this.addTitleSettings(containerEl, 'Note titles', this.plugin.settings.noteTitleOptions, 'noteTitleOptions');

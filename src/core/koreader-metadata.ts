@@ -1,11 +1,11 @@
 import { KOReaderBooks, KOReaderBook, KOReaderHighlight, KOReaderBookmark } from '../types/types';
 
 // Use dynamic require for Node.js modules to avoid linter errors
-// These are needed for accessing external file systems
+// These are needed for accessing external file systems (KOReader device mounted path)
 const getNodeModules = () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Required for accessing external file system paths outside Obsidian vault
   const fs = require('fs');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Required for path manipulation on external file system
   const path = require('path');
   return { fs, path };
 };

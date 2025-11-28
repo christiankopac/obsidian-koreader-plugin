@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-koreader-sync",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Sync highlights and bookmarks from KOReader with improved handling and organization.",
 	"main": "main.js",
 	"scripts": {
@@ -9,7 +9,7 @@
 		"copy-files": "mkdir -p dist && cp manifest.json dist/ && cp styles.css dist/",
 		"clean": "rm -rf dist",
 		"version": "node version-bump.mjs && pnpm run build && git add manifest.json versions.json dist/",
-		"release": "pnpm run build && cd dist && zip -r ../koreader-sync-plugin.zip ."
+		"release": "pnpm run build && cd dist && tar -czf ../koreader-sync-plugin.tar.gz ."
 	},
 	"keywords": [
 		"obsidian",

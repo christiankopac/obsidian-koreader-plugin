@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- Build script runs in Node.js, not in Obsidian plugin context
 import { readFileSync, writeFileSync } from "fs";
 
 // Read version from package.json (works with both npm and pnpm)
